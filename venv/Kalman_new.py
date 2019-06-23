@@ -221,8 +221,10 @@ def kf_pred_current_train_optimize(): # to be continued
     ax.set_xlim(0, 20)
     plt.show()
 
+
+
 def rankc(df, Filter):
-    df1 = df[['Adj Close', 'Volume', 'Return']]
+    df1 = df[['Adj Close', 'Volume']]
     df1.loc[:, 'MA5'] = df1.loc[:, 'Adj Close'].rolling(5).mean()
     df1.loc[:, 'MA10'] = df1.loc[:, 'Adj Close'].rolling(10).mean()
     df1.loc[:, 'MA20'] = df1.loc[:, 'Adj Close'].rolling(20).mean()
@@ -232,7 +234,7 @@ def rankc(df, Filter):
     # Calculate rank correlation
     from scipy.stats import spearmanr
     df1.loc[:, 'Rank Coefficient'] = np.nan
-    rank = df1.iloc[:, 3:7].rank(axis=1).values
+    rank = df1.iloc[:, 2:6].rank(axis=1).values
     for i in range(len(df1.index) - 30):
         i += 30
         data1 = [4, 3, 2, 1]
@@ -248,30 +250,25 @@ def rankc(df, Filter):
     df1.loc[df1['filter'] >= Filter, 'trend position'] = 1
     df1.loc[df1['filter'] < Filter, 'trend position'] = 0
 
-    # Calculate return
-    df1['position'] = np.nan
-    df1['position'] = df1['trend position']
-    df1['daily_yield'] = df1['position'].shift(1) * df1['Return']
-    df1['cum_yield'] = (1 + df1['daily_yield']).cumprod()
-
-    return (df1['trend position'], df1, Filter)  # return series and dataframe
+    return (df1['filter'], df1, Filter)  # return series and dataframe
 
 
-def kalman2_MAs_correlation(df, r, Filter=0.4):
+def kalman2_MAs_correlation(q = 0.5, Filter=0.4):
     train, test = df.iloc[:size, :], df.iloc[size:, :]
     test['Return'] = test['Adj Close'].pct_change()
-    predictions, estimation = kalman_filter_pred_current(test['Close'].values, r)
-    test['current predictions'] = np.array(predictions)
+    predictions, estimation = kalman_filter_pred_current(test['Adj Close'].values,q=q)
+    test['current prediction'] = np.array(predictions)
     test['estimation'] = np.array(estimation)
+    
 
 
-    test['correlation filter'] = rankc(test, Filter)[1]['filter']
+    test['correlation filter'] = rankc(test, Filter)[0]
 
-    test = test.dropna()
+    #test = test.dropna()
 
-    test['kf_long'] = np.where((test['estimation'] > test['current prediction']) & (abs(test['correlation filter']) > cor), 1,
+    test['kf_long'] = np.where((test['estimation'] < test['current prediction']) & (abs(test['correlation filter']) > Filter), 1,
                                 0)
-    test['kf_short'] = np.where((test['estimation'] < test['current prediction']) & (abs(test['correlation filter']) > cor),
+    test['kf_short'] = np.where((test['estimation'] > test['current prediction']) & (abs(test['correlation filter']) > Filter),
                                  -1, 0)
     test['kf_positions'] = test['kf_long'] + test['kf_short']
     test['kf_strategy_return'] = test['kf_positions'].shift(1) * test['Return']
@@ -295,17 +292,15 @@ def kalman2_MAs_correlation(df, r, Filter=0.4):
     ax1 = fig.add_subplot(211)
     ax2 = fig.add_subplot(212)
 
-    test[['Adj Close', 'current predictions', 'estimation', 'kf_positions']].plot(figsize=(12, 10), secondary_y=['kf_positions'],
+    test[['Adj Close', 'current prediction', 'estimation', 'kf_positions']].plot(figsize=(12, 10), secondary_y=['kf_positions'],
                                                                         ax=ax1)
 
     test[['correlation filter']].plot(ax=ax2)
-    ax2.axhline(y=cor, color='r', linestyle='--')
+    ax2.axhline(y=Filter, color='r', linestyle='--')
     plt.title('{} Kalman Filter training data \nsharpe ratio: {:.2f}'.format(s,sharpe_ratio))
 
     plt.show();
     return (test)
-
-
 
 def main():
     #kf_pred_current_train(q=0.5)
